@@ -1,0 +1,55 @@
+{
+  "_note": "Headline captions for scripts/store/frame.js. Each entry: [line 1, line 2]. Keys match the raw file names (NN-name). Languages: ko en (i18n-archive: extra languages archived in archive/i18n-extra-languages, see README to restore).",
+  "brand": {
+    "customer": { "a": "#3B5BFD", "b": "#19C39A" },
+    "partner": { "a": "#FF7A59", "b": "#FFB547" }
+  },
+  "customer": {
+    "01-home": {
+      "ko": ["집안일은 맡기고", "반짝이는 하루를"],
+      "en": ["Hand off the chores", "Enjoy a sparkling day"]
+    },
+    "02-service": {
+      "ko": ["필요한 청소만 골라요", "가격은 바로 확인"],
+      "en": ["Pick only what you need", "See the price instantly"]
+    },
+    "03-schedule": {
+      "ko": ["원하는 날, 원하는 시간", "1분이면 예약 완료"],
+      "en": ["Your day, your time", "Booked in a minute"]
+    },
+    "04-checkout": {
+      "ko": ["카드·간편결제·계좌이체", "안전하게 결제"],
+      "en": ["Cards, Kakao Pay, bank transfer", "Pay securely"]
+    },
+    "05-tracking": {
+      "ko": ["예약 진행 상황을 한눈에", "배정부터 완료까지"],
+      "en": ["Track every step", "From assignment to completion"]
+    },
+    "06-chat": {
+      "ko": ["궁금한 건 바로 채팅으로", "견적도 앱 안에서"],
+      "en": ["Chat with your cleaner", "Quotes right in the app"]
+    }
+  },
+  "partner": {
+    "01-jobs": {
+      "ko": ["오늘의 작업을 받아요", "지역과 시간에 맞춰서"],
+      "en": ["Today's jobs, matched to you", "By area and time"]
+    },
+    "02-job-detail": {
+      "ko": ["방문 정보와 메모를 한 화면에", "전후 사진도 바로"],
+      "en": ["Visit details on one screen", "Before and after photos too"]
+    },
+    "03-quote": {
+      "ko": ["이사·입주 견적, 직접 제안", "받을 금액을 실시간으로"],
+      "en": ["Send your own quote", "Your payout updates live"]
+    },
+    "04-earnings": {
+      "ko": ["정산은 매주 수요일", "완료한 작업을 투명하게"],
+      "en": ["Paid out every Wednesday", "Clear settlements for every job"]
+    }
+  },
+  "feature": {
+    "ko": { "title": "다해", "tagline": "검증된 청소 전문가, 투명한 가격" },
+    "en": { "title": "Dahae", "tagline": "Verified cleaners, clear prices" }
+  }
+}
