@@ -6,7 +6,7 @@
 # 작업 파일은 API 컨테이너가 써요. 이 파일은 정해진 명령만 실행하고, 파일 내용을 셸로 해석하지 않아요.
 #   사용법: agent.sh run   (dahae-agent.service 가 불러요)
 # 작업 파일 형식: id=<UUIDv7>, kind=<종류>, arg=<값>, token=<32자리 16진수, 선택> 줄만 허용해요. 그 밖의 줄·키·중복은 거부해요.
-# 승인이 필요한 작업(update-tag, rollback)은 승인 칸(host/awaiting.job)에 하나만 두고, 서버 승인 코드(<id>.approve)가 맞을 때만 실행해요.
+# 승인이 필요한 작업(update-tag, rollback, domain-set)은 승인 칸(host/awaiting.job)에 하나만 두고, 서버 승인 코드(<id>.approve)가 맞을 때만 실행해요.
 set -euo pipefail
 
 JOBS=${DAHAE_JOBS:-/opt/malkkeum/jobs}
@@ -23,6 +23,7 @@ JOB_RAN=""
 OWNER_UID=${DAHAE_OWNER_UID:-0}     # 상태·작업·호스트 폴더의 주인: 관리자(root)만 쓸 수 있어야 해요
 JOB_RUNNING=""
 JOB_TOKEN=""
+JOB_WHY=""                          # 실패 이유(이 파일의 고정 문장만): 콘솔에 상태와 함께 보여요
 MAX_JOB_BYTES=4096
 ID_WINDOW_MS=900000                 # 작업 번호(UUIDv7)의 시각은 15분 안이어야 해요
 MAX_JOB_LINES=8
@@ -69,8 +70,10 @@ say_step() { # say_step 기호 내용 : 단계 줄을 덧붙여요 (기록이 �
   [ ! -L "$log" ] && printf '%s %s\n' "$1" "$2" >> "$log" || warn "단계 기록을 못 했어요"
 }
 
-set_state() { # set_state 상태 : status/<id>.json 을 쓰고, 공개 토큰이 있으면 public/<토큰>.json 에도 상태만 써요
-  write_file "$JOBS/status/$JOB_ID.json" "$(printf '{"id":"%s","kind":"%s","state":"%s"}' "$JOB_ID" "$JOB_KIND" "$1")" || return 1
+set_state() { # set_state 상태 [이유] : status/<id>.json 을 쓰고, 공개 토큰이 있으면 public/<토큰>.json 에도 상태만 써요. 이유는 고정 문장만 받아요
+  local step=""
+  [ -z "${2:-}" ] || step=$(printf ',"step":"%s"' "$2")
+  write_file "$JOBS/status/$JOB_ID.json" "$(printf '{"id":"%s","kind":"%s","state":"%s"%s}' "$JOB_ID" "$JOB_KIND" "$1" "$step")" || return 1
   [ -z "$JOB_TOKEN" ] || write_file "$JOBS/public/$JOB_TOKEN.json" "$(printf '{"state":"%s"}' "$1")" || warn "공개 진행 상태를 못 남겼어요"
 }
 
@@ -117,7 +120,7 @@ env_val() { # env_val 키 : .env 의 값을 읽어요 (source 하지 않아요).
   { grep -E "^$1=" "$DIR/.env" 2>/dev/null || true; } | tail -n1 | cut -d= -f2-
 }
 
-is_high_kind() { case "$1" in update-tag|rollback) return 0 ;; *) return 1 ;; esac; } # 서버 승인이 필요한 종류
+is_high_kind() { case "$1" in update-tag|rollback|domain-set) return 0 ;; *) return 1 ;; esac; } # 서버 승인이 필요한 종류
 
 tag_ok() { # 정식 채널은 vX.Y.Z 만 받아요. 베타 채널만 -접미사를 받아요
   printf '%s' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' && return 0
@@ -173,13 +176,13 @@ log_arg_ok() { # 로그 값은 서비스:줄 수 (api|web|db, 50~2000 줄)
 
 job_args_ok() { # 종류와 값의 짝이 맞아야 해요. 목록에 없는 종류는 이 실행기에서 돌리지 않아요
   case "$JOB_KIND" in
-    logs|offsite-list|domain-check|update-tag|rollback|host-approval-enroll) [ -n "$JOB_TOKEN" ] || return 1 ;; # 결과·요약을 공개 파일로 남기려면 토큰이 있어야 해요
+    logs|offsite-list|domain-check|domain-set|update-tag|rollback|host-approval-enroll) [ -n "$JOB_TOKEN" ] || return 1 ;; # 결과·요약을 공개 파일로 남기려면 토큰이 있어야 해요
   esac
   case "$JOB_KIND" in
     status-refresh|backup-now|update|update-skip|offsite-list|rollback) [ -z "$JOB_ARG" ] ;;
     update-tag) tag_ok "$JOB_ARG" && tag_newer "$JOB_ARG" ;;
     logs) log_arg_ok ;;
-    domain-check) printf '%s' "$JOB_ARG" | grep -Eq "$DOMAIN_RE" ;;
+    domain-check|domain-set) printf '%s' "$JOB_ARG" | grep -Eq "$DOMAIN_RE" ;;
     heartbeat) [ "$JOB_ARG" = off ] || heartbeat_url_ok "$JOB_ARG" ;;
     host-approval-enroll) printf '%s' "$JOB_ARG" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' ;;
     channel) case "$JOB_ARG" in stable|beta) ;; *) return 1 ;; esac ;;
@@ -250,6 +253,8 @@ cancel_slot() { # cancel_slot 이유 : 승인 칸의 작업을 취소로 남기�
   if ! job_parse "$SLOT_JOB"; then clear_slot; return 0; fi
   say_step "!" "$reason"
   set_state cancelled || warn "취소 상태를 못 남겼어요"
+  # 지금 맞는 코드는 모두 써 버린 것으로 해요: API 가 받아 둔 코드로 다음에 올린 작업을 승인하지 못해요
+  write_file "$APPROVAL_STEP" "$(( $(date +%s) / 30 + 1 ))" || warn "승인 단계를 못 남겼어요"
   clear_slot
 }
 
@@ -263,20 +268,31 @@ summary_for() { # 서버가 직접 쓰는 요약 (값은 이미 검사를 통과
   case "$1" in
     update-tag) printf '업데이트: %s 버전으로 바꿔요 (먼저 백업해요)' "$2" ;;
     rollback) printf '이전 버전으로 되돌려요 (데이터는 그대로예요)' ;;
+    domain-set) printf '도메인을 %s 로 바꿔요 (예전 주소도 계속 응답해요)' "$2" ;;
   esac
 }
 
 hold_for_approval() { # hold_for_approval 사본 : 승인 칸에 하나만 두고, 서버가 쓴 요약을 공개 파일에 남겨요
   local copy="$1"
-  [ -n "$(approval_secret)" ] || { rm -f -- "$copy"; warn "서버 승인 코드가 없어요"; reject_job "$JOB_ID"; return 1; }
-  approval_locked && { rm -f -- "$copy"; warn "틀린 승인 코드가 많아서 승인이 잠겨 있어요"; reject_job "$JOB_ID"; return 1; }
-  [ ! -e "$SLOT_JOB" ] || { rm -f -- "$copy"; reject_job "$JOB_ID"; return 1; } # 승인 칸이 차 있으면 두 번째 작업은 거부해요
+  # 거부 이유는 단계 줄과 상태 파일(step)에 남겨요: 콘솔이 사장님께 그대로 보여 줘요
+  [ -n "$(approval_secret)" ] || { rm -f -- "$copy"; refuse_held "서버 승인 코드가 없어요. 설정에서 먼저 만들어 주세요"; return 1; }
+  approval_locked && { rm -f -- "$copy"; refuse_held "틀린 승인 코드가 많아서 승인이 잠겨 있어요 (1시간 뒤에 풀려요)"; return 1; }
+  [ ! -e "$SLOT_JOB" ] || { rm -f -- "$copy"; refuse_held "다른 작업이 서버 승인을 기다리고 있어요"; return 1; } # 승인 칸이 차 있으면 두 번째 작업은 거부해요
   mv -f -- "$copy" "$SLOT_JOB" || { rm -f -- "$copy"; return 1; }
   write_file "$SLOT_META" "$(printf 'expires=%s\ntries=0' $(( $(date +%s) + APPROVAL_TTL_SEC )))" || return 1
   set_state awaiting_approval || warn "승인 대기 상태를 못 남겼어요"
   say_step "!" "서버 승인을 기다려요"
   [ -z "$JOB_TOKEN" ] || write_file "$JOBS/public/$JOB_TOKEN.json" \
     "$(printf '{"state":"awaiting_approval","summary":"%s"}' "$(summary_for "$JOB_KIND" "$JOB_ARG")")" || warn "서버 요약을 못 남겼어요"
+}
+
+refuse_held() { # refuse_held 이유 : 승인 칸에 두지 못한 작업을 이유와 함께 거부해요 (이유는 이 파일의 고정 문장만)
+  warn "$1"; say_step "✘" "$1"; reject_job "$JOB_ID" "$1"
+}
+
+approval_issuer() { # 인증 앱에 보이는 이름: 이 서버의 도메인 (모양이 다르면 server)
+  local d; d=$(env_val DOMAIN)
+  if printf '%s' "$d" | grep -Eq "$DOMAIN_RE"; then printf '%s' "$d"; else printf 'server'; fi
 }
 
 approval_locked() { # 한 시간 안에 틀린 코드가 많으면 잠가요 (승인도, 새 승인 작업도 받지 않아요). owner-reset 이 기록을 지워요
@@ -335,12 +351,13 @@ approve_one() { # approve_one 경로 : 승인 코드 파일 하나를 받아요.
 
 approval_enroll() { # 승인 코드를 처음 한 번만 만들어요 (이미 있으면 실패). 사장님 계정 번호와 인증 앱 주소를 남겨요
   local secret
-  [ ! -e "$APPROVAL_KEY" ] && [ ! -L "$APPROVAL_KEY" ] || { warn "이미 서버 승인 코드가 있어요"; return 1; }
+  [ ! -e "$APPROVAL_KEY" ] && [ ! -L "$APPROVAL_KEY" ] || { JOB_WHY="이미 서버 승인 코드가 있어요"; warn "$JOB_WHY"; return 1; }
   secret=$(head -c 20 /dev/urandom | base32 | tr -d '=\n')
   [ "${#secret}" = 32 ] || return 1
   write_file "$OWNER_FILE" "$(printf '{"staff_id":"%s"}' "$JOB_ARG")" || return 1
   (umask 077; printf '%s\n' "$secret" > "$APPROVAL_KEY") || return 1
-  printf 'otpauth://totp/Dahae:server?secret=%s&issuer=Dahae&digits=6&period=30\n' "$secret" | out_publish "$JOB_TOKEN"
+  local issuer; issuer=$(approval_issuer)
+  printf 'otpauth://totp/%s:server?secret=%s&issuer=%s&digits=6&period=30\n' "$issuer" "$secret" "$issuer" | out_publish "$JOB_TOKEN"
 }
 
 # ---- 실행 (고정 명령만) ----
@@ -415,7 +432,7 @@ domain_check() { # 도메인이 이 서버를 가리키는지 봐요 (서버 IP 
   ip=$(server_ip 4) || { warn "서버 IP 를 확인하지 못했어요"; return 1; }
   ip6=$(server_ip 6) || ip6=""   # IPv6 가 없는 서버는 빈 값이에요
   a=$(getent ahostsv4 "$JOB_ARG" 2>/dev/null | awk '{ print $1 }' | grep -E "$IP_CHARS_RE" | sort -u || true)
-  aaaa=$(getent ahostsv6 "$JOB_ARG" 2>/dev/null | awk '{ print $1 }' | grep -E "$IP_CHARS_RE" | sort -u || true)
+  aaaa=$(getent ahostsv6 "$JOB_ARG" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ { print $1 }' | grep -E "$IP_CHARS_RE" | sort -u || true)
   grep -qxF "$ip" <<< "$a" && a_ok=true
   if [ -z "$aaaa" ]; then aaaa_ok=true
   elif [ -n "$ip6" ] && [ -z "$(grep -vxF "$ip6" <<< "$aaaa" || true)" ]; then aaaa_ok=true; fi
@@ -487,20 +504,28 @@ dispatch() { # 종류에 맞는 명령 하나만 실행해요. 종료 코드를 
     logs) logs_job ;;
     offsite-list) offsite_list ;;
     domain-check) domain_check ;;
+    domain-set) run_cli domain "$JOB_ARG" ;; # DNS 를 다시 보고, 새 주소가 응답하지 않으면 .env 를 되돌려요 (종료 코드 3)
     host-approval-enroll) approval_enroll ;;
   esac
 }
 
+fail_reason() { # fail_reason 종료코드 : 도메인 바꾸기가 끝나지 못한 이유 (관리 명령의 출력은 버려서, 종료 코드로 정해요)
+  case "$JOB_KIND:$1" in
+    domain-set:"$RC_ROLLED_BACK") echo "새 주소가 5분 안에 응답하지 않아 예전 도메인으로 되돌렸어요 (DNS·방화벽 80/443 확인)" ;;
+    domain-set:*) echo "도메인을 바꾸지 못했어요: 새 도메인 A 레코드가 이 서버를 가리키는지, 방화벽(80·443)이 열려 있는지 확인하세요. 지금 서비스는 그대로예요" ;;
+  esac
+}
+
 run_job() { # 작업 하나를 실행하고 결과(완료·되돌림·실패)를 상태에 남겨요 (잠금 안에서 한 번만 받은 작업이라, 기록이 실패해도 실행해요)
-  local rc=0
-  JOB_RUNNING=1; JOB_RAN=1
+  local rc=0 why
+  JOB_RUNNING=1; JOB_RAN=1; JOB_WHY=""
   set_state running || warn "진행 상태를 못 남겼어요"
   say_step "▶" "$JOB_KIND"
   if dispatch; then rc=0; else rc=$?; fi
   case "$rc" in
     0) say_step "✔" "완료"; set_state ok || warn "완료 상태를 못 남겼어요" ;;
-    "$RC_ROLLED_BACK") say_step "!" "이전 버전으로 되돌렸어요"; set_state rolled_back || warn "되돌림 상태를 못 남겼어요" ;;
-    *) say_step "✘" "실패"; set_state failed || warn "실패 상태를 못 남겼어요" ;;
+    "$RC_ROLLED_BACK") why=$(fail_reason "$rc"); say_step "!" "${why:-이전 버전으로 되돌렸어요}"; set_state rolled_back "$why" || warn "되돌림 상태를 못 남겼어요" ;;
+    *) why=${JOB_WHY:-$(fail_reason "$rc")}; say_step "✘" "${why:-실패}"; set_state failed "$why" || warn "실패 상태를 못 남겼어요" ;;
   esac
   JOB_RUNNING=""
 }
@@ -540,11 +565,12 @@ prune_old() { # 오래된 기록을 지워요 (상태·단계 30일, 작업 번�
 }
 
 # ---- 흐름 ----
-reject_job() { # reject_job 번호 : 검사에 실패한 작업은 상태를 rejected 로 두고 치워요
-  local id="$1" dst="$JOBS/status/$1.json"
+reject_job() { # reject_job 번호 [이유] : 검사에 실패한 작업은 상태를 rejected 로 두고 치워요. 이유는 이 파일의 고정 문장만 받아요
+  local id="$1" dst="$JOBS/status/$1.json" step=""
+  [ -z "${2:-}" ] || step=$(printf ',"step":"%s"' "$2")
   # 이미 상태가 있는 번호(예전 작업의 재전송)는 덮어쓰지 않아요. 끊어진 링크도 따라가지 않아요
   if printf '%s' "$id" | grep -Eq '^[0-9a-f-]{36}$' && [ ! -e "$dst" ] && [ ! -L "$dst" ]; then
-    printf '{"id":"%s","kind":"unknown","state":"rejected"}\n' "$id" > "$dst" || warn "거부 기록을 못 했어요"
+    printf '{"id":"%s","kind":"unknown","state":"rejected"%s}\n' "$id" "$step" > "$dst" || warn "거부 기록을 못 했어요"
   fi
   warn "작업을 거부했어요: $id"
 }

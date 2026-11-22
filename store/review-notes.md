@@ -10,7 +10,7 @@ These notes are the source text for reviewers. Real phone numbers and codes are 
 다해는 휴대폰 번호 인증(문자 메시지 인증번호)으로 로그인해요. 한국 휴대폰 번호가 없는 심사팀을 위해, 심사 전용 번호 하나에 대해서만 인증번호를 고정했어요.
 
 - **고객 앱**: 로그인 화면에서 휴대폰 번호 `<REVIEW_PHONE>` 을 입력하고 인증번호 `<REVIEW_CODE>` 를 입력하세요. 이 번호로는 문자가 발송되지 않아요.
-- **파트너 앱**: 같은 번호 `<REVIEW_PHONE>` 과 인증번호 `<REVIEW_CODE>` 로 로그인해요. 파트너 계정은 운영팀 승인 후 일감 화면이 열려요. 제출 전에 운영팀이 이 번호의 파트너 계정을 승인해 두세요.
+- **파트너 앱**: 고정 인증번호는 **고객 앱에서만** 돼요 (서버가 파트너 로그인에는 일부러 거절해요, `routes/auth.rs`). 파트너 앱 심사는 심사 전용 구글 계정 `<REVIEW_GOOGLE_EMAIL>` / `<REVIEW_GOOGLE_PASSWORD>` 로 [Google 로 로그인] 해요. 제출 전에 운영팀이 이 구글 계정으로 파트너 앱에 한 번 로그인해 회사 휴대폰 번호로 번호 확인을 끝내고, 지역·서비스를 입력한 뒤 콘솔에서 **승인**해 두세요. (확인 필요: 파트너 앱 빌드에 구글 로그인이 켜져 있어야 해요, `SOCIAL_PROVIDERS`.)
 - 심사 계정은 샘플 예약 2건(예정 1건, 완료 1건)이 미리 들어 있어요. 결제 없이 예약 화면과 내역을 볼 수 있어요.
 - 소셜 로그인(카카오, 네이버, 구글, 애플)도 있어요. 소셜 로그인은 실제 계정이 필요하므로 심사에는 위 번호 로그인을 사용해 주세요.
 - 심사 계정은 **심사 기간 동안만** 켜져 있고, 설정한 날짜(최대 30일)가 지나면 자동으로 꺼져요.
@@ -20,7 +20,7 @@ These notes are the source text for reviewers. Real phone numbers and codes are 
 Dahae signs users in with a phone number and a one-time code sent by SMS. Reviewers outside Korea cannot receive Korean SMS, so one review-only phone number has a fixed code. No SMS is sent for that number, and no other number can use the fixed code.
 
 - **Customer app**: enter phone `<REVIEW_PHONE>` and code `<REVIEW_CODE>`.
-- **Partner app**: sign in with the same phone and code. The partner account is shown once the operations team approves it, which we do before submission.
+- **Partner app**: tap "Sign in with Google" and use the review Google account `<REVIEW_GOOGLE_EMAIL>` / `<REVIEW_GOOGLE_PASSWORD>`. It is already an approved partner account, so the job, schedule and payout screens are open. (The fixed phone code above works in the customer app only.)
 - The review customer account already has two sample bookings (one upcoming, one completed), so the booking and history screens can be reviewed without paying.
 - Social login (Kakao, Naver, Google, and Sign in with Apple on iOS) is also offered. It needs a real account, so please use the phone login above.
 - The review account is switched off automatically after the period we set (at most 30 days).
@@ -48,7 +48,7 @@ Dahae signs users in with a phone number and a one-time code sent by SMS. Review
 | 팁 (선택) | 청소가 끝난 뒤 고객이 원하면 주는 팁. 전액 청소 파트너에게 가요 | `backend/migrations/0076_tips.sql` |
 | 쿠폰 · 포인트 | 청소 요금을 깎아 주는 혜택. **팔지 않아요.** 예약·가입·친구 초대로만 생기고, 현금으로 바꿀 수 없어요 | `coupons`, `points_ledger` |
 
-- 결제는 국내 결제대행사 PortOne(연동 PG: 토스페이먼츠 등)의 결제 화면에서 해요. 카드 번호는 앱과 서버가 받지 않아요.
+- 결제는 국내 결제대행사의 결제 화면에서 해요: 콘솔에서 켠 쪽에 따라 PortOne(연동 PG: 토스페이먼츠 등) 또는 토스페이먼츠 직접 연동. 카드 번호는 앱과 서버가 받지 않아요.
 - **Apple**: 심사 지침 3.1.3(e) 는 "앱 밖에서 소비되는 실물 상품·서비스"는 인앱 결제가 **아닌** 결제 수단(카드 등)을 써야 한다고 정해요. 그래서 인앱 결제(IAP)를 쓰지 않아요. 3.1.1(인앱 결제 의무)은 앱 안의 기능·콘텐츠를 여는 경우에 적용되는데, 다해에는 그런 상품이 없어요. 3.1.2 의 "자동 갱신 구독"도 인앱 결제 상품에 관한 규정이라 정기 청소에는 해당하지 않아요.
 - **Google**: Play 결제 정책도 실물 상품·서비스 결제에는 Play 결제 시스템을 쓰지 않도록 해요.
 
@@ -59,8 +59,8 @@ PAYMENTS (Guideline 3.1.3(e))
 Everything sold in this app is in-person home cleaning performed at the customer's
 home, i.e. a physical service consumed outside the app. Under Guideline 3.1.3(e) such
 purchases must use a payment method other than in-app purchase, so payments go through
-the Korean payment gateway PortOne (card and local wallets) on the gateway's hosted
-page. The app unlocks no digital content, features or functionality for money, so
+a Korean payment gateway (PortOne or Toss Payments: card and local wallets) on the
+gateway's hosted page. The app unlocks no digital content, features or functionality for money, so
 Guideline 3.1.1 does not apply.
 
 "Regular cleaning" (shown as a subscription) is a recurring schedule of in-person
@@ -106,7 +106,7 @@ they are never sold and cannot be cashed out.
 ## 7. 제출 전 확인 (owner checklist, not for reviewers)
 
 - [ ] 콘솔 설정 > 심사 계정: 번호와 인증번호 입력, 기간 설정 (저장 시 샘플 예약 2건 자동 생성)
-- [ ] 파트너 심사 번호의 파트너 계정을 "승인" 처리
+- [ ] 파트너 앱 심사용 구글 계정 만들기 → 파트너 앱에서 로그인·번호 확인(회사 휴대폰) → 콘솔에서 "승인" 처리 (1항). 심사 번호에는 파트너를 등록하지 마세요 (고정 인증번호가 꺼져요)
 - [ ] 위 `<…>` 자리 채우기 (Play "앱 액세스", App Store "심사 메모")
 - [ ] 심사 기간이 끝나기 전 제출, 승인 후 심사 계정을 끄거나 기간 만료 확인
 - [ ] 콘솔 > 마케팅 > 성장 > 후기 신고 관리에 대기 건이 있으면 처리 (심사 중 신고가 들어오면 바로 처리)

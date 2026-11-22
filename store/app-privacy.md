@@ -1,7 +1,7 @@
 # App Store 답안: 개인정보 라벨 · 연령 등급 · 수출 규정
 
 App Store Connect 에 입력할 답을 한곳에 모았어요. 고객 앱(다해)과 파트너 앱(다해 파트너)은 **따로** 입력해요.
-Google Play 쪽 같은 내용은 `data-safety.md` 예요. 한쪽을 고치면 다른 쪽도 고치세요. 두 문서 모두 v1.5.1 출시 빌드 기준이에요.
+Google Play 쪽 같은 내용은 `data-safety.md` 예요. 한쪽을 고치면 다른 쪽도 고치세요. 두 문서 모두 v1.6.0 출시 빌드 기준이에요.
 
 근거: 서버 `backend/migrations/`, `backend/crates/api/src/`, 앱 `app/packages/core/lib/src/`, iOS `app/apps/*/ios/Runner/PrivacyInfo.xcprivacy`, `Info.plist`.
 
@@ -46,9 +46,9 @@ Apple 의 기준 (2026-11 확인, https://developer.apple.com/app-store/app-priv
 
 **수집하지 않음** 으로 두는 항목: 건강·피트니스, 민감한 정보, 연락처(주소록), 검색 기록, 방문 기록, 오디오, 광고 데이터, **위치**.
 
-**위치**: 고객 앱은 주소 입력 화면에서 [현재 위치로 찾기]를 누를 때만 "앱 사용 중" 위치 권한을 요청해요 (`NSLocationWhenInUseUsageDescription`, 14개 언어). 좌표는 iPhone 의 주소 변환 기능에만 넘기고 다해 서버로 보내지 않아요. Apple 의 "수집" 정의(우리나 협력사가 볼 수 있게 기기 밖으로 보냄)에 해당하지 않으므로 **위치: 수집하지 않음**이에요. 저장되는 것은 사용자가 확인한 주소(위 "실제 주소")뿐이에요.
+**위치**: 고객 앱은 주소 입력 화면에서 [현재 위치로 찾기]를 누를 때만 "앱 사용 중" 위치 권한을 요청해요 (`NSLocationWhenInUseUsageDescription`, 한국어·영어). 좌표는 iPhone 의 주소 변환 기능에만 넘기고 다해 서버로 보내지 않아요. Apple 의 "수집" 정의(우리나 협력사가 볼 수 있게 기기 밖으로 보냄)에 해당하지 않으므로 **위치: 수집하지 않음**이에요. 저장되는 것은 사용자가 확인한 주소(위 "실제 주소")뿐이에요.
 
-**AI 상담 (Anthropic)**: 운영자가 AI 상담을 켠 경우, 고객이 쓴 상담 문장과 해당 예약 요약이 Anthropic API 로 전송돼 답변을 만들어요 (`backend/crates/api/src/ai.rs`). 라벨에서는 "고객 지원" 줄에 들어 있어요. 심사 지침 5.1.2(i) 는 제3자 AI 에 개인정보를 보낼 때 이를 밝히고 동의를 받으라고 해요. 다해는 가입 때 국외 이전 동의(받는 자: Anthropic, Google)를 받고 `privacy.html` 5·6항에 적어요. 고객이 [동의 관리]에서 국외 이전 동의를 철회하면 AI 상담과 푸시 알림이 함께 멈춰요 (v1.5.0).
+**AI 상담 (Anthropic)**: 운영자가 AI 상담을 켠 경우, 고객이 쓴 상담 문장과 해당 예약 요약이 Anthropic API 로 전송돼 답변을 만들어요 (`backend/crates/api/src/ai.rs`). 라벨에서는 "고객 지원" 줄에 들어 있어요. 심사 지침 5.1.2(i) 는 제3자 AI 에 개인정보를 보낼 때 이를 밝히고 동의를 받으라고 해요. 다해는 가입 때 국외 이전 동의(받는 자: Anthropic, Google)를 받고 `privacy.html` 5·6항에 적어요. 고객이 [동의 관리]에서 국외 이전 동의를 철회하면 AI 상담과 푸시 알림이 함께 멈춰요 (v1.5.1).
 
 ### 파트너 앱 (다해 파트너)
 분석 이벤트가 없고 위치 권한도 없어요.

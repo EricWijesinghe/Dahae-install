@@ -85,7 +85,8 @@ PASS 인증 지원, 카카오·네이버·구글·애플 로그인
 ```
 This is a home-cleaning marketplace for Korea. Customers book cleaning visits; partner
 cleaners use the separate partner app. Physical services are paid through Korean payment
-gateways (PortOne), so In-App Purchase does not apply (Guideline 3.1.3(e)).
+gateways (PortOne or Toss Payments), so In-App Purchase does not apply (Guideline 3.1.3(e)).
 Sign in with Apple is offered next to the other social logins.
-Demo login: phone <demo number>, code <6-digit code> (set in the console under Setup → Store review demo account). Account deletion: More → Account → Delete account.
+Demo login: phone <demo number>, code <6-digit code> (set in the console under Setup → Store review demo account). Partner app: Sign in with Google, review account <review Google email> / <password> (an approved partner).
+Account deletion: More → Account → Delete account.
 ```

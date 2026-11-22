@@ -17,7 +17,8 @@
 | 7 | [운영 명령어](07-운영-명령어.md) · *Operations commands* | `dahae` 명령: 상태, 로그, 백업, 복구, 업데이트, 되돌리기 | 설치 담당 | 백업, 업데이트, 문제 확인 |
 | 8 | [내 클라우드 계정에 올리기](08-클라우드-배포.md) · *Deploying on your own cloud account* | 클라우드 서버 만들기, 도메인과 DNS, 설치 명령, 백업 저장소 연결까지 전 과정 | 사장님 또는 설치 담당 | 서버를 직접 빌려 처음 설치할 때 (약 1시간) |
 | 9 | [클라우드별 설치](09-클라우드별-설치.md) · *Install by cloud provider* | 업체별로 붙여넣는 칸, 방화벽, 고정 IP, 브라우저 SSH 한 줄 | 사장님 또는 설치 담당 | 서버를 만들 때 |
-| 10 | [AWS 에 올리고 자동 배포하기](10-AWS-배포.md) · *Deploying on AWS with automatic deploys* | 담당 IAM 계정, CloudFormation 으로 서버 만들기, GitHub 승인 배포와 되돌리기 | 사장님, 담당자, 개발사 | AWS 를 쓰는 회사가 한 번 (약 2시간) |
+| 10 | [AWS 에 올리고 자동 배포하기](10-AWS-배포.md) · *Deploying on AWS with automatic deploys* | 담당 IAM 계정, CloudFormation 으로 서버 만들기, GitHub 승인 배포와 되돌리기 | 사장님, 담당자, 개발자 | AWS 를 쓰는 회사가 한 번 (약 2시간) |
+| 11 | [스토어 앱 빌드 (개발자)](11-앱-직접-빌드.md) · *Store app builds (developer, GitHub Actions)* | 저장소 `store` 환경 설정, 스토어 계정과 키, `store-apps` 실행, Play·TestFlight 업로드, 심사 제출 | 개발자 (DODA 계정 권한으로) | 앱을 처음 스토어에 올릴 때와 업데이트할 때 |
 | - | [결제 연동 설정](payments-setup.md) · *Payment setup (PortOne · Toss Payments)* | 결제와 지급대행 키 발급 순서, 웹훅 점검, 테스트 결제 | 설치 담당 | 결제 카드를 채울 때 |
 | - | [결제 연동 참고](payments-reference.md) · *Payment integration reference* | 결제·지급대행 API 연동 사양과 확인 필요 항목 | 개발자 | 결제 로직을 점검할 때 |
 
@@ -64,6 +65,7 @@ Start with **guide 0** (install in one go), then **guide 2** (setup wizard) and 
 | 8 | [Deploying on your own cloud account](08-클라우드-배포.md) (Korean) | Creating the cloud server, domain and DNS, the install command, offsite backup | Owner or installer | Once, when you set up your own server (about an hour) |
 | 9 | [Install by cloud provider](09-클라우드별-설치.md) (Korean) | Which field to paste into for each provider, firewall, static IP, one-line browser SSH fallback | Owner or installer | When creating the server |
 | 10 | [Deploying on AWS with automatic deploys](10-AWS-배포.md) (Korean) | The deployer IAM account, launching the server with CloudFormation, approved GitHub deploys and rollback | Owner, installer, developer | Once, for a company that runs on AWS (about two hours) |
+| 11 | [Store app builds (developer, GitHub Actions)](11-앱-직접-빌드.md) (Korean, English section included) | Setting up the `store` environment, store accounts and keys, the `store-apps` runs, Play and TestFlight uploads, review submission | Developer, using DODA's store accounts | First store release and each update |
 | - | [Payment setup (PortOne · Toss Payments)](payments-setup.md) (bilingual) | Key order, webhook check, test payments | Installer | When filling the payment card |
 | - | [Payment integration reference](payments-reference.md) (bilingual) | PortOne V2 and Toss payout API notes, items still to confirm in a sandbox | Developer | When reviewing payment code |
 
