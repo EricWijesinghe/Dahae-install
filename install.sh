@@ -4,7 +4,7 @@
 
 # 다해 서버 설치 프로그램 (Ubuntu 22.04 / 24.04, Debian 12)
 #
-#   curl -fsSL https://raw.githubusercontent.com/EricWijesinghe/malkkeum-install/v1.2.3/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.2.3/install.sh | sudo bash
 #   (버전 태그 v… 는 바뀌지 않고, 같은 태그에 지문 파일 SHA256SUMS 가 있어요. 채널 최신: .../main/install.sh, 베타 .../beta/install.sh)
 #
 # 질문 두 개(도메인, 이메일)에 답하면 서버 점검, Docker 설치, 보안 키 생성, HTTPS 자동 설정, 매일 백업,
@@ -45,9 +45,9 @@ HB_URL_RE='^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/:@+=?-]*)?$'
 # 서버 이미지는 이 저장소의 .github/workflows/release.yml 이 v 태그에서 cosign(키 없는 서명)으로 서명해요.
 SIGNER_REPO_DEFAULT=EricWijesinghe/Dahae
 # 이 버전의 배포 주소(agent.sh 가 있는 곳). publish-delivery.sh 가 채워 넣어요. 비어 있으면 MALKKEUM_AGENT_FILE 이 필요해요.
-RELEASE_RAW=https://raw.githubusercontent.com/EricWijesinghe/malkkeum-install/v1.5.1
+RELEASE_RAW=https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.0
 # 작업 실행기(agent.sh)의 SHA-256. publish-delivery.sh 가 이 배포본에 맞춰 채워 넣어요. 받은 agent.sh 가 이 지문과 다르면 설치를 멈춰요.
-AGENT_SHA256=e736bf57b423559e89d822dc173476f9d8b1bc718d3cf86c7a814606fe81a55a
+AGENT_SHA256=b21aeb05365bf0450698e070cd43b1c3bcc79c92159ff8815f529a825b159a16
 # 서명 확인 도구. 버전을 고정하고, 받은 파일의 SHA-256 이 아래와 같을 때만 써요 (cosign_checksums.txt 기준).
 COSIGN_VERSION=v3.1.4
 COSIGN_SHA256_AMD64=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
@@ -435,6 +435,8 @@ DIR=__DIR__
 BACKUP_KEEP_DAYS=14
 UPDATE_WAIT_SECS=${DAHAE_HEALTH_WAIT:-${MALKKEUM_HEALTH_WAIT:-180}}
 HB_URL_RE='^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/:@+=?-]*)?$'
+DOMAIN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$' # 설치 프로그램·작업 실행기와 같은 규칙
+DOMAIN_WAIT_SECS=${DAHAE_DOMAIN_WAIT:-300} # 새 도메인의 인증서 발급을 기다리는 시간
 BIN=/usr/local/bin
 API_DB_USER=dahae_api # 앱이 쓰는 DB 계정: 슈퍼유저가 아니에요. app 은 관리·백업용 슈퍼유저예요
 SIGN_ISSUER=https://token.actions.githubusercontent.com
@@ -450,6 +452,7 @@ USAGE='사용법: dahae <명령>
   restore-offsite [이름] [--yes]  외부 백업 목록 / 내려받아 되돌리기
   load 파일.tar               미리 받아 둔 이미지 불러오기 (인터넷 없이 업데이트)
   heartbeat <https 주소>|off  외부 가동 확인 핑 주소 설정
+  domain <새 도메인> [--yes]  서비스 주소 바꾸기 (예전 주소도 계속 응답해요. 새 주소가 응답하지 않으면 되돌려요)
   host-approval enroll <번호>|status  서버 승인 코드 만들기 / 상태 (버전 올리기·되돌리기 승인에 써요)
   owner-reset                 서버 승인 코드 지우기 (확인 글자 입력 필요)
   applinks --android-sha256 지문[,지문] --apple-team-id 팀ID   앱 링크 설정
@@ -1007,6 +1010,69 @@ cmd_heartbeat() { # dahae heartbeat <https 주소>|off
   else warn "주소는 저장했지만 테스트 핑이 실패했어요. 주소를 확인하세요."; fi
 }
 
+new_domain_ok() { # new_domain_ok 도메인 : 설치 프로그램의 valid_domain 과 같아요 (소문자로 받은 값)
+  [ "${#1}" -le 253 ] && printf '%s' "$1" | grep -Eq "$DOMAIN_RE" && case "$1" in *.local) return 1 ;; esac
+}
+
+domain_dns_ok() { # domain_dns_ok 도메인 : A 에 이 서버의 공인 IPv4 가 있고, AAAA 는 없거나 이 서버 것이어야 해요 (테스트 설치는 건너뛰어요)
+  local d="$1" ip v
+  if [ "$(env_get TLS_MODE)" = internal ] || [ -n "${MALKKEUM_SKIP_DNS_CHECK:-}" ]; then return 0; fi
+  ip=$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null) || return 1
+  getent ahostsv4 "$d" 2>/dev/null | awk '{ print $1 }' | grep -qxF "$ip" || return 1
+  for v in $(getent ahostsv6 "$d" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ { print $1 }' | sort -u); do
+    ip -6 addr show scope global 2>/dev/null | grep -qiF "$v" || return 1
+  done
+}
+
+domain_https_ok() { # domain_https_ok 도메인 : 이 서버의 443 으로 https://<도메인>/health 를 10초마다 봐요 (인증서 발급을 기다려요)
+  local waited=0 k=()
+  [ "$(env_get TLS_MODE)" != internal ] || k=(-k)
+  # A 레코드는 domain_dns_ok 가 봤어요. 공인 IP 로 돌아 들어오지 않아도(NAT 루프백 없음) 인증서는 그대로 검사해요
+  until curl -fsS ${k[@]+"${k[@]}"} --max-time 10 --resolve "$1:443:127.0.0.1" -o /dev/null "https://$1/health" 2>/dev/null; do
+    [ "$waited" -lt "$DOMAIN_WAIT_SECS" ] || return 1
+    sleep 10; waited=$((waited + 10))
+  done
+}
+
+cmd_domain() { # dahae domain <새 도메인> [--yes] : .env 를 백업하고 DOMAIN 을 바꿔요. 새 주소가 응답하지 않으면 되돌리고 종료 코드 3
+  local new old backup
+  new=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
+  [ "${2:-}" != --yes ] || YES=1
+  new_domain_ok "$new" || die "사용법: dahae domain <새 도메인> (예: myshop.co.kr)"
+  old=$(env_get DOMAIN)
+  [ "$new" != "$old" ] || die "지금 쓰는 도메인이에요: $new"
+  domain_dns_ok "$new" || die "$new 이 아직 이 서버를 가리키지 않아요. A 레코드를 이 서버의 IP 로 맞춘 뒤 다시 해 주세요. 지금 서비스는 그대로예요."
+  confirm "서비스 주소를 $old 에서 $new 로 바꿀까요? 30초쯤 멈춰요. 예전 주소도 계속 응답해요." "$new"
+  # 바꾸기 전에 새 주소를 https 로 확인해요: API 가 이 파일(읽기 전용)을 보고 15분 동안 인증서를 허락하고, Caddy 는
+  # 받은 인증서를 바꾼 뒤에도 그대로 써요. 응답하지 않으면 아무것도 바꾸지 않고 끝나요
+  mkdir -p jobs/out && printf '%s\n' "$new" > jobs/out/domain-pending || die "새 주소를 확인하지 못해서 바꾸지 않았어요. 지금 서비스는 그대로예요."
+  if ! domain_https_ok "$new"; then
+    rm -f jobs/out/domain-pending
+    die "$new 이 https 로 응답하지 않아서 바꾸지 않았어요. DNS 와 방화벽(80·443)을 확인하고 다시 해 주세요. 지금 서비스는 그대로예요."
+  fi
+  rm -f jobs/out/domain-pending
+  mkdir -p backups
+  backup="backups/env-before-domain-$(date +%Y%m%d-%H%M%S)"
+  (umask 077; cp -- .env "$backup") || die ".env 를 백업하지 못해서 바꾸지 않았어요."
+  # 바꾸는 도중에 끊기면(작업 시간 제한, Ctrl+C) 새 DOMAIN 을 .env 에 남기지 않아요
+  # shellcheck disable=SC2064 # 지금의 백업 경로를 넣어 둬요
+  trap "cat -- $(printf '%q' "$backup") > .env; exit 143" TERM INT HUP
+  env_set DOMAIN "$new"
+  if dc up -d api web >/dev/null 2>&1 && wait_healthy && domain_https_ok "$new"; then
+    trap - TERM INT HUP
+    ok "서비스 주소를 $new 로 바꿨어요. 예전 주소 $old 도 계속 응답해요 (콘솔 설정 > 도메인에서 은퇴시켜요)."
+    return 0
+  fi
+  warn "$new 가 응답하지 않아서 예전 설정으로 되돌려요."
+  cat -- "$backup" > .env
+  # API 가 다시 켜질 때 이 주소를 예전 도메인으로 남기지 않게 알려 줘요
+  printf '%s\n' "$new" > jobs/out/domain-rolled-back || warn "되돌린 주소를 API 에 알리지 못했어요"
+  trap - TERM INT HUP
+  # 되돌린 서비스가 응답할 때만 rolled_back 이에요. 아니면 실패로 끝나서 콘솔이 "되돌렸어요" 라고 하지 않아요
+  { dc up -d api web >/dev/null 2>&1 && wait_healthy; } || die "되돌렸지만 서비스가 응답하지 않아요. 'dahae status' 를 확인하세요."
+  die_rolled_back "도메인을 바꾸지 못해서 $old 로 되돌렸어요. DNS 와 방화벽(80·443)을 확인하고 다시 해 주세요."
+}
+
 cmd_applinks() { # dahae applinks --android-sha256 지문[,지문] --apple-team-id 팀ID
   local sha="" team="" changed=0
   while [ $# -gt 0 ]; do
@@ -1031,7 +1097,7 @@ cmd_applinks() { # dahae applinks --android-sha256 지문[,지문] --apple-team-
 }
 
 cmd_host_approval() { # dahae host-approval enroll <사장님 계정 번호> | status : 서버 승인 코드를 처음 만들어요 (버전 올리기·되돌리기를 승인할 때 인증 앱 코드를 써요)
-  local secret uri staff="${2:-}"
+  local secret uri issuer staff="${2:-}"
   case "${1:-status}" in
     enroll)
       printf '%s' "$staff" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
@@ -1040,7 +1106,8 @@ cmd_host_approval() { # dahae host-approval enroll <사장님 계정 번호> | s
       secret=$(head -c 20 /dev/urandom | base32 | tr -d '=\n')
       printf '{"staff_id":"%s"}\n' "$staff" > host/owner.json || die "사장님 계정 번호를 저장하지 못했어요"
       (umask 077; printf '%s\n' "$secret" > host/approval.key) || die "서버 승인 코드를 저장하지 못했어요"
-      uri="otpauth://totp/Dahae:server?secret=$secret&issuer=Dahae&digits=6&period=30"
+      issuer=$(env_get DOMAIN); printf '%s' "$issuer" | grep -Eq "$DOMAIN_RE" || issuer=server
+      uri="otpauth://totp/$issuer:server?secret=$secret&issuer=$issuer&digits=6&period=30"
       ok "서버 승인 코드를 만들었어요. 인증 앱에 아래 주소나 키를 넣어 주세요 (6자리, 30초)."
       printf '  키: %s\n  주소: %s\n' "$secret" "$uri"
       if command -v qrencode >/dev/null; then qrencode -t ANSIUTF8 "$uri"; fi ;;
@@ -1189,6 +1256,7 @@ main() {
     restore) shift; cmd_restore "$@" ;;
     restore-offsite) shift; cmd_restore_offsite "$@" ;;
     heartbeat) shift; cmd_heartbeat "$@" ;;
+    domain) shift; cmd_domain "$@" ;;
     host-approval) shift; cmd_host_approval "$@" ;;
     owner-reset) shift; cmd_owner_reset "$@" ;;
     keys-backup) cmd_keys_backup ;;

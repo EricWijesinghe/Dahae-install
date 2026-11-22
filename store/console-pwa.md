@@ -14,9 +14,9 @@ Reasons:
 - The console is used by the owner and a few staff on the same hosted origin. Store review adds a second release channel to maintain for a small audience.
 - The web build already serves the console from the same API, so every fix reaches staff on the next load.
 - The Windows MSIX script (`scripts/store/build-msix.ps1`) packages only the customer and partner apps (`$Apps` default). Signing a console MSIX is needed only if the owner asks for a Store listing later.
-- The Android console keeps its signing block in `apps/console/android/app/build.gradle.kts`. Adding a `console-android` Codemagic job and a listing is the upgrade path if a store app is chosen. It is not part of v1.
+- The Android console keeps its signing block in `apps/console/android/app/build.gradle.kts`. Adding a `console-android` job to `store-apps.yml` and a listing is the upgrade path if a store app is chosen. It is not part of v1.
 
-To switch to signed store apps later, add a `console-android` workflow to `codemagic.yaml` (mirroring `partner-android`), add a console listing to `docs/store`, and add `console` to the `Apps` set in `scripts/store/build-msix.ps1` if Windows signing is required.
+To switch to signed store apps later, add a `console` app to `.github/workflows/store-apps.yml` (mirroring `partner`), add a console listing to `docs/store`, and add `console` to the `Apps` set in `scripts/store/build-msix.ps1` if Windows signing is required.
 
 ### Audit item APPS-2
 
