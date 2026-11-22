@@ -48,6 +48,10 @@ APPROVAL_FAILS="$HOST_DIR/approval.fails"   # 틀린 승인 코드의 시각 기
 APPROVAL_FAIL_MAX=10                # 한 시간 안에 이만큼 틀리면 승인을 잠가요 (owner-reset 이나 1시간 뒤에 풀려요)
 APPROVAL_FAIL_WINDOW_SEC=3600
 OWNER_FILE="$HOST_DIR/owner.json"   # 승인 코드를 만든 사장님 계정 번호
+KEYS_PASS_HEX_RE='^([0-9a-f]{2}){12,256}$' # 비밀 키 사본의 잠금 비밀번호 (UTF-8 바이트를 16진수로, 12~256 바이트)
+RC_PAYOUTS_IN_DOUBT=4               # dahae rollback 이 정산 확인 때문에 멈췄을 때의 종료 코드
+RC_TOOLS_STALE=5                    # 새(또는 되돌린) 버전은 정상인데 관리 도구만 바꾸지 못했을 때 (dahae update·rollback)
+RC_NO_PREVIOUS=6                    # dahae rollback: 되돌릴 이전 버전 기록이 없어요
 LOG_MIN_LINES=50
 LOG_MAX_LINES=2000
 
@@ -176,10 +180,11 @@ log_arg_ok() { # 로그 값은 서비스:줄 수 (api|web|db, 50~2000 줄)
 
 job_args_ok() { # 종류와 값의 짝이 맞아야 해요. 목록에 없는 종류는 이 실행기에서 돌리지 않아요
   case "$JOB_KIND" in
-    logs|offsite-list|domain-check|domain-set|update-tag|rollback|host-approval-enroll) [ -n "$JOB_TOKEN" ] || return 1 ;; # 결과·요약을 공개 파일로 남기려면 토큰이 있어야 해요
+    logs|offsite-list|domain-check|domain-set|update-tag|rollback|host-approval-enroll|keys-backup) [ -n "$JOB_TOKEN" ] || return 1 ;; # 결과·요약을 공개 파일로 남기려면 토큰이 있어야 해요
   esac
   case "$JOB_KIND" in
-    status-refresh|backup-now|update|update-skip|offsite-list|rollback) [ -z "$JOB_ARG" ] ;;
+    status-refresh|backup-now|update|update-skip|offsite-list|rollback|keys-confirm) [ -z "$JOB_ARG" ] ;;
+    keys-backup) printf '%s' "$JOB_ARG" | grep -Eq "$KEYS_PASS_HEX_RE" ;;
     update-tag) tag_ok "$JOB_ARG" && tag_newer "$JOB_ARG" ;;
     logs) log_arg_ok ;;
     domain-check|domain-set) printf '%s' "$JOB_ARG" | grep -Eq "$DOMAIN_RE" ;;
@@ -264,10 +269,18 @@ expire_slot() { # 승인 시간이 지난 작업은 취소해요 (실행기가 �
   return 0
 }
 
+prev_version() { # 되돌리면 올라올 버전: PREV_API_IMAGE 이미지의 버전 표시 (vX.Y.Z[-접미사] 만, 모르면 '버전 모름')
+  local img v=""
+  img=$(env_val PREV_API_IMAGE)
+  [ -z "$img" ] || v=$(timeout 20 docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "$img" 2>/dev/null) || v=""
+  case "$v" in [0-9]*) v="v$v" ;; esac
+  if printf '%s' "$v" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]{1,40})?$'; then printf '%s' "$v"; else printf '버전 모름'; fi
+}
+
 summary_for() { # 서버가 직접 쓰는 요약 (값은 이미 검사를 통과한 것만 들어가요)
   case "$1" in
     update-tag) printf '업데이트: %s 버전으로 바꿔요 (먼저 백업해요)' "$2" ;;
-    rollback) printf '이전 버전으로 되돌려요 (데이터는 그대로예요)' ;;
+    rollback) printf '이전 버전으로 되돌려요: %s (데이터는 그대로예요)' "$(prev_version)" ;;
     domain-set) printf '도메인을 %s 로 바꿔요 (예전 주소도 계속 응답해요)' "$2" ;;
   esac
 }
@@ -443,6 +456,20 @@ domain_check() { # 도메인이 이 서버를 가리키는지 봐요 (서버 IP 
 
 offsite_list() { cli_out restore-offsite | mask_log | out_publish "$JOB_TOKEN"; } # 외부 백업 목록을 out/<토큰> 에 남겨요
 
+keys_backup_job() { # 비밀번호(16진수)로 잠근 비밀 키 사본을 만들고, 그 파일을 base64 로 out/<토큰> 에 남겨요 (콘솔이 한 번만 내려받아요)
+  local pass mark f
+  pass=$(printf '%s' "$JOB_ARG" | sed 's/../\\x&/g')
+  { pass=$(printf '%b' "$pass"); } 2>/dev/null
+  # NUL 이나 끝의 줄바꿈은 위에서 사라져요: 길이가 다르면 받은 비밀번호와 다르니 멈춰요
+  [ "$(LC_ALL=C; printf '%s' "${#pass}")" -eq $(( ${#JOB_ARG} / 2 )) ] || { JOB_WHY="비밀번호에 쓸 수 없는 글자가 있어요"; return 1; }
+  mark=$(mktemp "$JOBS/work/keys.XXXXXX") || return 1
+  DAHAE_KEYS_PASSPHRASE="$pass" run_cli keys-backup || { rm -f -- "$mark"; return 1; }
+  f=$(find "$DIR/backups" -maxdepth 1 -type f -name 'keys-*.env.enc' -newer "$mark" 2>/dev/null | sort | tail -n1)
+  rm -f -- "$mark"
+  [ -n "$f" ] || { JOB_WHY="비밀 키 사본 파일을 찾지 못했어요"; return 1; }
+  base64 -w0 -- "$f" | out_publish "$JOB_TOKEN"
+}
+
 word_or_unknown() { # 값이 글자·숫자·.-_ 만 아니면 unknown 으로 바꿔요 (host.json 에 그대로 들어가요)
   case "$1" in ''|*[!A-Za-z0-9._-]*) printf 'unknown' ;; *) printf '%s' "$1" ;; esac
 }
@@ -506,12 +533,19 @@ dispatch() { # 종류에 맞는 명령 하나만 실행해요. 종료 코드를 
     domain-check) domain_check ;;
     domain-set) run_cli domain "$JOB_ARG" ;; # DNS 를 다시 보고, 새 주소가 응답하지 않으면 .env 를 되돌려요 (종료 코드 3)
     host-approval-enroll) approval_enroll ;;
+    keys-backup) keys_backup_job ;;
+    keys-confirm) run_cli keys-confirm ;; # API 가 사장님의 한 번뿐인 내려받기 뒤에 넣어요
   esac
 }
 
 fail_reason() { # fail_reason 종료코드 : 도메인 바꾸기가 끝나지 못한 이유 (관리 명령의 출력은 버려서, 종료 코드로 정해요)
   case "$JOB_KIND:$1" in
     domain-set:"$RC_ROLLED_BACK") echo "새 주소가 5분 안에 응답하지 않아 예전 도메인으로 되돌렸어요 (DNS·방화벽 80/443 확인)" ;;
+    rollback:"$RC_PAYOUTS_IN_DOUBT") echo "토스 결과를 기다리는 정산이 있어서 되돌리지 않았어요. 콘솔 [정산]에서 상태 확인으로 정리한 뒤 다시 해 주세요" ;;
+    update:"$RC_TOOLS_STALE"|update-tag:"$RC_TOOLS_STALE"|channel:"$RC_TOOLS_STALE") echo "새 버전으로 바꿨고 정상이에요. 관리 도구만 바꾸지 못했어요: 설치 줄을 한 번 다시 실행해 주세요 (안내서 10 C-5)" ;;
+    rollback:"$RC_TOOLS_STALE") echo "이전 버전으로 되돌렸고 정상이에요. 관리 도구만 되돌리지 못했어요: 설치 줄을 한 번 다시 실행해 주세요 (안내서 10 C-5)" ;;
+    rollback:"$RC_NO_PREVIOUS") echo "되돌릴 이전 버전이 없어요 (업데이트를 한 번 한 뒤에 쓸 수 있어요). 지금 버전 그대로예요" ;;
+    rollback:*) echo "되돌리지 못했어요. 시스템 상태를 확인하고 'dahae logs' 를 개발자에게 보여 주세요" ;;
     domain-set:*) echo "도메인을 바꾸지 못했어요: 새 도메인 A 레코드가 이 서버를 가리키는지, 방화벽(80·443)이 열려 있는지 확인하세요. 지금 서비스는 그대로예요" ;;
   esac
 }

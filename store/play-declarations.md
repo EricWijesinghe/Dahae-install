@@ -4,7 +4,7 @@ Play Console → 앱 → [정책] → [앱 콘텐츠] 화면의 항목을 위에
 
 - 데이터 보안(Data safety) 표는 길어서 `data-safety.md` 에 따로 있어요.
 - 심사팀에 줄 로그인 정보와 메모는 `review-notes.md` 에 있어요.
-- v1.6.0 출시 빌드 기준이에요 (포인트, 탈퇴 시 소셜 연결 삭제 포함).
+- v1.6.1 출시 빌드 기준이에요 (포인트, 탈퇴 시 소셜 연결 삭제 포함).
 - Play Console 의 질문 문구는 가끔 바뀌어요. 문구가 조금 달라도 뜻이 같은 답을 고르세요. 기준: https://support.google.com/googleplay/android-developer/answer/9859455 (2026-11 확인).
 
 ## 한눈에 보기
