@@ -47,7 +47,7 @@ SIGNER_REPO_DEFAULT=EricWijesinghe/Dahae
 # 이 버전의 배포 주소(agent.sh 가 있는 곳). publish-delivery.sh 가 채워 넣어요. 비어 있으면 MALKKEUM_AGENT_FILE 이 필요해요.
 RELEASE_RAW=https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/beta
 # 작업 실행기(agent.sh)의 SHA-256. publish-delivery.sh 가 이 배포본에 맞춰 채워 넣어요. 받은 agent.sh 가 이 지문과 다르면 설치를 멈춰요.
-AGENT_SHA256=63713761c3172cef519d80e814803928ba8a57747ef6ce27ea235fe9c435bf44
+AGENT_SHA256=0f69959165793081f74b3c534d8b1234d1d1bb644a545b8d4ea85f883c795204
 # 서명 확인 도구. 버전을 고정하고, 받은 파일의 SHA-256 이 아래와 같을 때만 써요 (cosign_checksums.txt 기준).
 COSIGN_VERSION=v3.1.4
 COSIGN_SHA256_AMD64=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
@@ -319,16 +319,17 @@ dns_check() { # DNS_OK=1 이면 도메인이 이 서버를 가리켜요
 }
 
 # ---- 서버가 가진 파일들 ----
-write_compose() {
-  cat > docker-compose.yml <<'EOF'
+write_compose() { # 새 파일에 다 쓴 뒤 이름을 바꿔요: 디스크가 차서 중간에 끊겨도 반쯤 쓴 설정이 남지 않아요 (.env 는 건드리지 않아요)
+  cat > docker-compose.yml.new <<'EOF'
 # Managed by install.sh — re-run the installer or `dahae update` instead of editing.
 # Same as deploy/docker-compose.yml in the source repo except the image lines (installer-selftest checks).
 # Container logs: 10 MB per file, 14 files kept per container (about 140 MB each at most; days kept depend on traffic).
 x-logging: &log { driver: json-file, options: { max-size: 10m, max-file: "14" } }
 # Every container: no privilege gain through setuid binaries or file capabilities, no Linux capability
 # unless listed under cap_add, a read-only root filesystem (writes go to volumes and tmpfs only), and
-# memory and process caps sized for a 2 GB VPS. No CPU caps: `cpus` above the host's core count stops
-# `docker compose up` on a 1-vCPU server.
+# memory and process caps sized for a 2 GB VPS: db 768m + api 512m + web 384m = 1664m (1984m with the optional
+# uptime monitor). They are ceilings, not reservations: the stack uses far less on an idle server. No CPU caps:
+# `cpus` above the host's core count stops `docker compose up` on a 1-vCPU server.
 x-hardened: &hardened
   restart: unless-stopped
   logging: *log
@@ -365,6 +366,8 @@ services:
     init: true
     mem_limit: 512m
     pids_limit: 256
+    # Every signed-in app keeps a /ws socket open (one file each): Docker's default 1024 would stall near 1,000 apps.
+    ulimits: { nofile: { soft: 65536, hard: 65536 } }
     depends_on: { db: { condition: service_healthy } }
     environment:
       # Non-superuser app role (owner of the cleaning DB); `app` stays the admin/backup superuser.
@@ -399,8 +402,11 @@ services:
     # Certificates and config live in the caddydata/caddyconfig volumes.
     cap_add: [NET_BIND_SERVICE]
     tmpfs: [/tmp]
-    mem_limit: 256m
+    # TLS buffers for ~1,000+ long-lived app sockets; 256m was tight.
+    mem_limit: 384m
     pids_limit: 256
+    # Two open files per proxied socket (the app's side and the API's side).
+    ulimits: { nofile: { soft: 65536, hard: 65536 } }
     # Plain start order, not service_healthy: an API that never gets healthy would make `docker compose up`
     # fail before `dahae update` can roll back to the previous version.
     depends_on: [api]
@@ -426,6 +432,7 @@ services:
 
 volumes: { dbdata: {}, uploads: {}, caddydata: {}, caddyconfig: {}, caddylogs: {}, kumadata: {} }
 EOF
+  mv -f docker-compose.yml.new docker-compose.yml
 }
 
 # 관리 명령. 본문은 따옴표 heredoc 이라 그대로 옮겨지고, __DIR__ 만 바꿔 넣어요.
@@ -437,6 +444,9 @@ write_cli() { # write_cli 경로 : 새 파일에 쓰고 이름을 바꿔요. 이
 set -euo pipefail
 DIR=__DIR__
 BACKUP_KEEP_DAYS=14
+# 사진 묶음은 매번 전체 사본이라 14일치를 두면 50 GB 디스크가 사진 3 GB 쯤에서 차요. 이번 사진 묶음이 외부 백업(S3)에
+# 올라갔을 때만 서버에는 3일치를 남겨요 (DB 덤프는 그대로 14일치). 외부 백업이 없거나 실패하면 14일치 그대로예요
+PHOTO_KEEP_DAYS_OFFSITE=3
 UPDATE_WAIT_SECS=${DAHAE_HEALTH_WAIT:-${MALKKEUM_HEALTH_WAIT:-180}}
 HB_URL_RE='^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/:@+=?-]*)?$'
 DOMAIN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$' # 설치 프로그램·작업 실행기와 같은 규칙
@@ -727,7 +737,7 @@ set_images() { # 이미지 두 개를 지정해서 기동하고 .env 에 기록�
 }
 
 cmd_backup() { # BACKUP_WARN=1 이면 DB 는 백업됐지만 사진 파일이나 외부 백업이 실패했어요
-  local ts db up prune="${1:-prune}"; ts=$(date +%Y%m%d-%H%M%S); BACKUP_WARN=0; db_up
+  local ts db up prune="${1:-prune}" photo_days=$BACKUP_KEEP_DAYS; ts=$(date +%Y%m%d-%H%M%S); BACKUP_WARN=0; db_up
   db="backups/db-$ts.sql.gz"; up="backups/uploads-$ts.tar.gz"
   if ! dc exec -T db pg_dump -U app -d cleaning --clean --if-exists | gzip > "$db"; then
     rm -f "$db"; die "DB 백업에 실패했어요. 'dahae logs db' 로 확인하세요."
@@ -738,6 +748,8 @@ cmd_backup() { # BACKUP_WARN=1 이면 DB 는 백업됐지만 사진 파일이나
   # Offsite copy (콘솔: 설정 > 외부 백업). The local backup stays good if this fails or isn't set up.
   if [ -f "$up" ] && ! api_backup backup-upload "/$up" >> backups/backup.log 2>&1; then
     BACKUP_WARN=1; warn "사진 파일 외부 백업이 실패했어요 (로컬 백업은 됐어요). 콘솔 [설정 > 외부 백업]을 확인하세요"
+  elif tail -n 20 backups/backup.log 2>/dev/null | grep -qxF "offsite backup uploaded: ${up##*/}"; then
+    photo_days=$PHOTO_KEEP_DAYS_OFFSITE # 미설정이어도 성공(0)으로 끝나요: 실제로 올라간 기록이 있을 때만 줄여요
   fi
   api_backup backup-upload "/$db" >> backups/backup.log 2>&1 \
     || warn "외부 백업 실패 또는 미설정 — 콘솔 [설정 > 외부 백업]을 확인하세요"
@@ -746,10 +758,14 @@ cmd_backup() { # BACKUP_WARN=1 이면 DB 는 백업됐지만 사진 파일이나
   seal_local "$db" || true
   if [ -f "$up" ]; then seal_local "$up" || true; fi
   seal_leftover_plaintext
-  [ "$prune" = noprune ] || find backups \( -name 'db-*.sql.gz' -o -name 'db-*.sql.gz.enc' -o -name 'uploads-*.tar.gz' -o -name 'uploads-*.tar.gz.enc' \) -mtime +"$BACKUP_KEEP_DAYS" -delete
+  [ "$prune" = noprune ] || prune_backups "$photo_days"
   if [ -f "$db.enc" ]; then ok "백업 완료: $DIR/$db.enc"; return 0; fi
   BACKUP_WARN=1; warn "로컬 백업을 봉인하지 못했어요. 업데이트·복원·되돌리기를 멈춰요. 'dahae logs' 로 확인하세요."
   return 1
+}
+prune_backups() { # prune_backups 사진보관일 : DB 덤프는 BACKUP_KEEP_DAYS 일, 사진 묶음은 받은 날수가 지나면 지워요
+  find backups \( -name 'db-*.sql.gz' -o -name 'db-*.sql.gz.enc' \) -mtime +"$BACKUP_KEEP_DAYS" -delete
+  find backups \( -name 'uploads-*.tar.gz' -o -name 'uploads-*.tar.gz.enc' \) -mtime +"$1" -delete
 }
 seal_leftover_plaintext() { # 봉인되지 않은 평문 db-*.sql.gz · uploads-*.tar.gz 를 .enc 로 바꿔요 (예전 설치에서 남은 것)
   local f
@@ -1103,7 +1119,7 @@ cmd_restore() { # dahae restore 파일 [--yes]
   fi
   local files=복원됨 rc=0
   if [ ! -f "$up" ]; then
-    files="백업 없음"; warn "같은 시각의 사진 파일 백업($up)이 없어 DB 만 복원했어요."
+    files="백업 없음"; warn "같은 시각의 사진 파일 백업($up)이 없어 DB 만 복원했어요. 외부 백업에 있으면 'dahae restore-offsite' 로 함께 복원돼요."
   elif ! dc run --rm --no-deps -T --entrypoint sh api -c "$UPLOADS_SWAP" < "$up"; then
     files=실패; rc=1; warn "사진 파일 복원에 실패했어요 (DB 는 복원됐어요): $up"
   fi

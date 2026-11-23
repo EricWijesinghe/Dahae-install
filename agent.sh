@@ -26,6 +26,7 @@ JOB_TOKEN=""
 JOB_WHY=""                          # 실패 이유(이 파일의 고정 문장만): 콘솔에 상태와 함께 보여요
 MAX_JOB_BYTES=4096
 ID_WINDOW_MS=900000                 # 작업 번호(UUIDv7)의 시각은 15분 안이어야 해요
+ID_SKEW_MS=2000                     # 폴더 감시로 바로 받으면 번호 시각이 지금보다 조금 앞설 수 있어요 (같은 초 안)
 MAX_JOB_LINES=8
 PROGRESS_KEEP_MIN=10                # 공개 진행 파일은 작업이 끝난 뒤 10분만 남아요
 OUT_KEEP_MIN=10                     # 결과 파일(out/)도 10분만 남아요
@@ -112,12 +113,14 @@ job_parse() { # job_parse 사본 : key=value 줄만 읽어 JOB_ID·JOB_KIND·JOB
   [ -n "$JOB_ID" ] && [ -n "$JOB_KIND" ]
 }
 
-id_fresh() { # id_fresh 번호 : UUIDv7 이고, 시각이 15분 안이며 미래가 아니어야 해요
+id_fresh() { # id_fresh 번호 : UUIDv7 이고, 시각이 15분 안이며 미래가 아니어야 해요 (2초 여유)
   local id="$1" hex ms now
   printf '%s' "$id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' || return 1
   hex=${id//-/}; hex=${hex:0:12}
-  ms=$((16#$hex)); now=$(($(date +%s) * 1000))
-  [ "$ms" -le "$now" ] && [ $((now - ms)) -le "$ID_WINDOW_MS" ]
+  # 밀리초로 비교해요: 초 단위로 내리면 같은 초 안에 만든 번호가 '미래'로 보여 거부됐어요 (콘솔의 키 사본 확인이 그렇게 막혔어요)
+  ms=$((16#$hex)); now=$(date +%s%3N)
+  case "$now" in *[!0-9]*|'') now=$(($(date +%s) * 1000 + 999)) ;; esac # %N 이 없는 date 에선 그 초의 끝으로 봐요
+  [ "$ms" -le $((now + ID_SKEW_MS)) ] && [ $((now - ms)) -le "$ID_WINDOW_MS" ]
 }
 
 env_val() { # env_val 키 : .env 의 값을 읽어요 (source 하지 않아요). 없으면 빈 값

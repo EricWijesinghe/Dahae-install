@@ -3,6 +3,8 @@
 Check lengths with `python -I docs/store/check_listings.py`. Keep the row order and the limits.
 The brand name Dahae (다해) stays as is; the English name is the transliteration.
 
+The text below uses the default brand **Dahae**. A licensee that ships under its own name pastes it with that name in place of Dahae and checks the lengths again. **DODA ships as 우집사**: the English store name is the brand's English name from the console (`name_en`; for example `Uzipsa`, to confirm with DODA), giving app names such as `Uzipsa - Trusted Cleaning` and `Uzipsa Partner: Cleaner App`, app ids `kr.co.uzipsa.customer` and `kr.co.uzipsa.partner` (GitHub `store` variables `CUSTOMER_APP_ID`, `PARTNER_APP_ID`; left empty they default to `kr.co.dahae.customer`, `kr.co.dahae.partner`).
+
 ## Customer app · Dahae
 | Field | Limit | Value |
 |---|---|---|
