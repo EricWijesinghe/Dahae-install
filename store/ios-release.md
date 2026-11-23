@@ -1,14 +1,16 @@
 # iOS 출시 순서 (App Store · TestFlight) / iOS release steps
 
-고객 앱 `kr.co.dahae.customer`(다해)와 파트너 앱 `kr.co.dahae.partner`(다해 파트너)를 개발자가 GitHub Actions (`store-apps`, macOS 러너) 로 빌드하고 DODA 의 Apple 개발자 계정으로 올려요 ([guide 11](../guide/11-앱-직접-빌드.md)). Mac 은 필요 없어요. 개인정보 라벨·수출 규정 답은 `app-privacy.md`, 심사 메모는 `review-notes.md`, 키 목록은 `docs/DEPLOY.md` §3 예요.
+고객 앱과 파트너 앱을 개발자가 GitHub Actions (`store-apps`, macOS 러너) 로 빌드하고 DODA 의 Apple 개발자 계정으로 올려요 ([guide 11](../guide/11-앱-직접-빌드.md)). Mac 은 필요 없어요. 개인정보 라벨·수출 규정 답은 `app-privacy.md`, 심사 메모는 `review-notes.md`, 키 목록은 `docs/DEPLOY.md` §3 예요.
+앱 ID 는 GitHub `store` 변수 `CUSTOMER_APP_ID`, `PARTNER_APP_ID` 에서 와요. 비워 두면 기본값 `kr.co.dahae.customer`(다해), `kr.co.dahae.partner`(다해 파트너) 예요. **DODA 는 우집사로 출시해요: `kr.co.uzipsa.customer`(우집사), `kr.co.uzipsa.partner`(우집사 파트너).** 아래 표의 앱 ID 는 이 값으로 바꿔 읽으세요. 첫 업로드 뒤에는 바꿀 수 없어요 (바꾸면 새 앱이에요).
 The developer builds both apps with GitHub Actions (`store-apps`, macOS runner) and uploads them to DODA's own Apple developer account ([guide 11](../guide/11-앱-직접-빌드.md)). No Mac needed. Privacy label and export answers: `app-privacy.md`; review notes: `review-notes.md`; key list: `docs/DEPLOY.md` §3.
+App ids come from the GitHub `store` variables `CUSTOMER_APP_ID` and `PARTNER_APP_ID`; left empty they are `kr.co.dahae.customer` and `kr.co.dahae.partner`. **DODA ships as 우집사 with `kr.co.uzipsa.customer` and `kr.co.uzipsa.partner`**; read the ids in the table below as those. An id cannot change after the first upload (a new id is a new app).
 
 ## 1. 준비할 것 (1번은 DODA, 2–11번은 개발자) / What to prepare (item 1 DODA, items 2–11 the developer)
 
 | # | 준비물 / Item | 어디서 / Where | 비고 / Note |
 |---|---|---|---|
 | 1 | Apple Developer Program 가입 (연 99 USD, 법인은 D-U-N-S 번호) | developer.apple.com/programs | 개인 계정이면 판매자 이름이 개인 이름으로 보여요. Individual accounts show a personal seller name |
-| 2 | App ID 2개 등록: `kr.co.dahae.customer`, `kr.co.dahae.partner` | Certificates, Identifiers & Profiles → Identifiers | 둘 다 **Push Notifications**, **Sign in with Apple**, **Associated Domains** 켜기. 하나라도 빠지면 서명이 실패해요. Enable all three on both IDs, or signing fails |
+| 2 | App ID 2개 등록: 고객·파트너 앱 ID (기본 `kr.co.dahae.customer`, `kr.co.dahae.partner`; DODA `kr.co.uzipsa.customer`, `kr.co.uzipsa.partner`) | Certificates, Identifiers & Profiles → Identifiers | 둘 다 **Push Notifications**, **Sign in with Apple**, **Associated Domains** 켜기. 하나라도 빠지면 서명이 실패해요. Enable all three on both IDs, or signing fails |
 | 3 | App Store Connect 앱 2개 만들기 (언어 한국어, 번들 ID 위 2개, SKU 자유) | appstoreconnect.apple.com → Apps → + | 앱을 먼저 만들어야 TestFlight 업로드가 돼요. The app record must exist before the first upload |
 | 4 | App Store Connect API 키 (역할 **Admin**. App Manager 키는 자동 서명 내보내기에서 "Cloud signing permission error" 로 실패해요. Role **Admin**: cloud signing needs it) | Users and Access → Integrations → App Store Connect API → Team Keys | `.p8`(한 번만 내려받기), Key ID, Issuer ID 3가지. 먼저 DODA 계정 소유자가 이 화면에서 API 액세스를 요청해야 해요. The Account Holder requests API access first |
 | 5 | GitHub 저장소에 넣기 | 저장소 Settings → Environments → `store` → Secrets | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_B64` (.p8 을 base64 로). 값은 저장소에 올리지 않아요. Enter the three values; never commit them |
@@ -16,7 +18,7 @@ The developer builds both apps with GitHub Actions (`store-apps`, macOS runner) 
 | 7 | Firebase iOS 앱 2개 (번들 ID 동일) → `GoogleService-Info.plist` | Firebase 콘솔 | `base64 -w0` 로 바꿔 `store` 환경의 secret `GOOGLE_SERVICE_INFO_PLIST_B64`(고객), `PARTNER_GOOGLE_SERVICE_INFO_PLIST_B64`(파트너). 없으면 푸시만 꺼진 채로 빌드돼요. Without it the build works, push is off |
 | 8 | 로그인 키 | `docs/DEPLOY.md` §3 표 | `GOOGLE_IOS_CLIENT_ID`·`PARTNER_GOOGLE_IOS_CLIENT_ID`(번들 ID마다 iOS OAuth 클라이언트), `KAKAO_NATIVE_KEY`(카카오 개발자 콘솔 → 플랫폼 → iOS 번들 ID 등록), 네이버 개발자센터에서 iOS 번들 ID 등록 |
 | 9 | `APP_LINK_DOMAIN` (서버 도메인) + 서버 콘솔 **설정 → 앱 링크** 카드의 Apple Team ID | Apple Developer 우측 상단 Membership → Team ID ([guide 11](../guide/11-앱-직접-빌드.md) 6번 6항) | 서버가 `/.well-known/apple-app-site-association` 을 내줘야 네이버 로그인이 iOS 17.4+ 에서 돼요. 아래 4항 확인 |
-| 10 | Apple 로그인 서버 키 (`.p8`) | 콘솔 Apple 카드, `review-notes.md` §3 | 탈퇴 때 Apple 토큰 해지에 쓰여요. 키 하나 (`Eric Sign in with Apple`) 로 두 앱에 모두 써요. 서버가 이 키로 서명하고 앱마다 번들 ID (`kr.co.dahae.customer`, `kr.co.dahae.partner`) 를 클라이언트 ID 로 써요. One key, `Eric Sign in with Apple`, covers both apps: the server signs with it and uses each app's bundle id as its client id |
+| 10 | Apple 로그인 서버 키 (`.p8`) | 콘솔 Apple 카드, `review-notes.md` §3 | 탈퇴 때 Apple 토큰 해지에 쓰여요. 키 하나 (`Eric Sign in with Apple`) 로 두 앱에 모두 써요. 서버가 이 키로 서명하고 앱마다 번들 ID (위 2번의 앱 ID) 를 클라이언트 ID 로 써요. One key, `Eric Sign in with Apple`, covers both apps: the server signs with it and uses each app's bundle id as its client id |
 | 11 | 스크린샷, 설명, 개인정보처리방침 URL | App Store Connect 앱 페이지 | 아이폰 6.9인치 스크린샷 필수 (`docs/store/screenshots`, 문구 `listing-*.md`). 아이패드용은 필요 없어요 (앱이 아이폰 전용) |
 
 **이름 규칙 / Naming**: DODA 가 개발자를 초대할 때 사용자 이름은 **Eric Wijesinghe** (이름 Eric), 개발자를 위해 만드는 키는 이름에 Eric 을 넣어요 (API 키 `Eric CI`, APNs 키 `Eric APNs`, Apple 로그인 키 `Eric Sign in with Apple`). 회사 안에서 누구의 계정·키인지 헷갈리지 않게 하려는 거예요. The developer's user is invited as **Eric Wijesinghe**, and every key made for him carries "Eric" in its name, so nobody at the company mistakes whose it is.

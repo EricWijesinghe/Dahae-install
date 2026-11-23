@@ -111,4 +111,5 @@ they are never sold and cannot be cashed out.
 - [ ] 심사 기간이 끝나기 전 제출, 승인 후 심사 계정을 끄거나 기간 만료 확인
 - [ ] 콘솔 > 마케팅 > 성장 > 후기 신고 관리에 대기 건이 있으면 처리 (심사 중 신고가 들어오면 바로 처리)
 - [ ] Sign in with Apple: 콘솔 Apple 카드에 키(.p8) 입력, Apple 개발자 계정에 서버 알림 URL `https://<API_DOMAIN>/v1/auth/apple/notifications` 등록
+- [ ] 앱 ID: GitHub `store` 변수 `CUSTOMER_APP_ID`, `PARTNER_APP_ID` 가 스토어 앱과 콘솔 **설정 → 앱 링크**의 값과 같은지 확인 (비워 두면 `kr.co.dahae.customer`, `kr.co.dahae.partner`; DODA 의 우집사는 `kr.co.uzipsa.customer`, `kr.co.uzipsa.partner`). 첫 업로드 뒤에는 바꿀 수 없어요
 - [ ] 이름 변경(다해) 확인 목록: 상표(KIPRIS), 카카오 채널·알림톡, PG 가맹점 이름, 약관 변경 7일 전 공지 → `docs/REBRAND-CHECKLIST.md`

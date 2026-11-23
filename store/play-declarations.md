@@ -1,6 +1,6 @@
 # Google Play 앱 콘텐츠 신고 답안 (App content declarations)
 
-Play Console → 앱 → [정책] → [앱 콘텐츠] 화면의 항목을 위에서부터 채우는 답안이에요. 고객 앱(`kr.co.dahae.customer`)과 파트너 앱(`kr.co.dahae.partner`)에 **각각** 입력해요. 따로 적지 않은 줄은 두 앱의 답이 같아요.
+Play Console → 앱 → [정책] → [앱 콘텐츠] 화면의 항목을 위에서부터 채우는 답안이에요. 고객 앱과 파트너 앱에 **각각** 입력해요. 앱 ID 는 GitHub `store` 변수 `CUSTOMER_APP_ID`, `PARTNER_APP_ID` 이고, 비워 두면 `kr.co.dahae.customer`, `kr.co.dahae.partner` 예요 (DODA 의 우집사: `kr.co.uzipsa.customer`, `kr.co.uzipsa.partner`). 따로 적지 않은 줄은 두 앱의 답이 같아요.
 
 - 데이터 보안(Data safety) 표는 길어서 `data-safety.md` 에 따로 있어요.
 - 심사팀에 줄 로그인 정보와 메모는 `review-notes.md` 에 있어요.
@@ -135,6 +135,7 @@ Apple 의 연령 등급 설문은 질문이 달라서 `app-privacy.md` 2항에 �
 - 다해는 방문 청소(실물 서비스)만 팔아요. Play 결제 정책은 실물 상품·서비스에 Play 결제 시스템을 쓰지 않도록 하므로 결제대행사(PortOne)를 써요. 정기 청소(구독)와 팁도 같은 실물 서비스 결제예요. 자세한 설명은 `review-notes.md` 4항.
 
 ## 제출 전 점검
+- [ ] Play Console 앱의 패키지 이름이 빌드의 앱 ID 와 같은지 확인 (DODA: `kr.co.uzipsa.customer`, `kr.co.uzipsa.partner`). 첫 업로드 뒤에는 바꿀 수 없어요
 - [ ] 도메인이 정해져 1·13항 주소가 실제로 열리는지 확인
 - [ ] 고객센터 이메일이 `delete-account.html` 에 보이는지 확인
 - [ ] 출시 빌드에 위치·포인트·오류 보고가 들어갔는지 확인하고 4·9·12항과 `data-safety.md` 답을 맞추기

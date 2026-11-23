@@ -2,6 +2,8 @@
 
 글자 수는 `python -I docs/store/check_listings.py` 로 검사해요. 표의 순서와 글자 제한을 바꾸지 마세요.
 
+아래 문구는 기본 브랜드 이름 **다해**로 적혀 있어요. 다른 이름으로 출시할 때는 '다해'를 스토어에 올릴 브랜드 이름으로 바꿔 붙여넣고 글자 수를 다시 확인하세요. **DODA 는 우집사로 출시해요**: 앱 이름은 `우집사 - 믿을 수 있는 홈클리닝`, `우집사 파트너 - 청소 전문가 앱` 처럼 바꾸고, 앱 ID 는 `kr.co.uzipsa.customer`, `kr.co.uzipsa.partner` 예요 (GitHub `store` 변수 `CUSTOMER_APP_ID`, `PARTNER_APP_ID`; 비워 두면 기본 `kr.co.dahae.customer`, `kr.co.dahae.partner`).
+
 ## 고객 앱 · 다해
 | 항목 | 글자 제한 | 내용 |
 |---|---|---|
