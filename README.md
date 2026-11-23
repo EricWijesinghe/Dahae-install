@@ -15,11 +15,11 @@
 ## 설치 명령
 서버 SSH 화면에 붙여넣기 (주소의 `v…` 버전 태그는 바뀌지 않아요):
 ```
-curl -fsSL https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.1/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.2/install.sh | sudo bash
 ```
 받은 파일을 먼저 확인하려면 (지문 파일 `SHA256SUMS` 는 같은 태그에 있어요):
 ```
-curl -fsSLO https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.1/install.sh && curl -fsSLO https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.1/SHA256SUMS && sha256sum -c SHA256SUMS && sudo bash install.sh
+curl -fsSLO https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.2/install.sh && curl -fsSLO https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.2/SHA256SUMS && sha256sum -c SHA256SUMS && sudo bash install.sh
 ```
 이 채널의 최신 버전은 언제나 `https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/main/install.sh` 이에요 (안정 버전은 `main`, 베타는 `beta` 브랜치).
 베타 버전을 먼저 써 보려면 이 저장소 `beta` 브랜치의 README 에 있는 설치 명령을 쓰세요.

@@ -45,7 +45,7 @@ HB_URL_RE='^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/:@+=?-]*)?$'
 # 서버 이미지는 이 저장소의 .github/workflows/release.yml 이 v 태그에서 cosign(키 없는 서명)으로 서명해요.
 SIGNER_REPO_DEFAULT=EricWijesinghe/Dahae
 # 이 버전의 배포 주소(agent.sh 가 있는 곳). publish-delivery.sh 가 채워 넣어요. 비어 있으면 MALKKEUM_AGENT_FILE 이 필요해요.
-RELEASE_RAW=https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.1
+RELEASE_RAW=https://raw.githubusercontent.com/EricWijesinghe/Dahae-install/v1.6.2
 # 작업 실행기(agent.sh)의 SHA-256. publish-delivery.sh 가 이 배포본에 맞춰 채워 넣어요. 받은 agent.sh 가 이 지문과 다르면 설치를 멈춰요.
 AGENT_SHA256=63713761c3172cef519d80e814803928ba8a57747ef6ce27ea235fe9c435bf44
 # 서명 확인 도구. 버전을 고정하고, 받은 파일의 SHA-256 이 아래와 같을 때만 써요 (cosign_checksums.txt 기준).
