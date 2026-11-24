@@ -88,7 +88,7 @@ copy_small() { # copy_small 파일 사본 최대바이트 : 일반 파일과 주
   [ ! -L "$f" ] && [ -f "$f" ] || return 1
   uid=$(stat -c %u -- "$f") && size=$(stat -c %s -- "$f") || return 1
   [ "$uid" = "$JOB_UID" ] && [ "$size" -le "$max" ] || return 1
-  head -c $((max + 1)) "$f" > "$c" || return 1
+  timeout 5 head -c $((max + 1)) -- "$f" > "$c" || return 1  # 바꿔치기된 FIFO 라도 5초 안에 끝나요
   [ "$(stat -c %s -- "$c")" -le "$max" ]
 }
 
@@ -346,13 +346,15 @@ approve_run() { # 승인된 작업을 실행해요: 승인 칸의 사본을 다�
 }
 
 approve_one() { # approve_one 경로 : 승인 코드 파일 하나를 받아요. 칸의 작업 번호와 맞고 코드가 맞을 때만 실행해요
-  local src="$1" name id copy code lines
+  local src="$1" name id dst copy code lines
   name=$(basename -- "$src")
   printf '%s' "$name" | grep -Eq '^[0-9a-f-]{36}\.approve$' || return 1
   id=${name%.approve}
-  copy=$(mktemp "$JOBS/work/copy.XXXXXX") || return 1
-  if ! copy_small "$src" "$copy" "$APPROVE_MAX_BYTES"; then rm -f -- "$src" "$copy"; return 1; fi
-  rm -f -- "$src"
+  dst="$JOBS/work/$name"
+  mv -T -- "$src" "$dst" || return 1                    # 루트만 쓰는 work/ 로 옮긴 뒤에 읽어요 (API 가 바꿔치기 못 해요). -T: 남은 폴더 안으로 들어가지 않아요
+  copy=$(mktemp "$JOBS/work/copy.XXXXXX") || { rm -rf -- "$dst"; return 1; }
+  if ! copy_small "$dst" "$copy" "$APPROVE_MAX_BYTES"; then rm -rf -- "$dst"; rm -f -- "$copy"; return 1; fi  # API 가 만든 폴더여도 지워요
+  rm -f -- "$dst"
   if approval_locked; then rm -f -- "$copy"; warn "틀린 승인 코드가 많아서 승인이 잠겨 있어요 (1시간 뒤에 풀려요)"; return 1; fi
   if ! slot_is "$id"; then rm -f -- "$copy"; warn "승인 칸에 없는 작업이에요: $id"; return 1; fi
   code=$(sed -n 's/^code=\([0-9]\{6\}\)$/\1/p' "$copy" | head -n1)
@@ -443,15 +445,14 @@ server_ip() { # server_ip 4|6 : 이 서버의 공개 IPv4·IPv6 를 두 곳에 �
 
 json_list() { awk 'NF { printf "%s\"%s\"", (n++ ? "," : ""), $1 }'; } # 줄마다 값 하나를 JSON 배열 안에 넣어요
 
-domain_check() { # 도메인이 이 서버를 가리키는지 봐요 (서버 IP 는 이 서버가 직접 물어봐요). A 는 이 서버의 IPv4, AAAA 는 없거나 이 서버의 IPv6 이어야 해요
-  local ip ip6 a aaaa a_ok=false aaaa_ok=false
+domain_check() { # 도메인이 이 서버를 가리키는지 봐요 (서버 IP 는 이 서버가 직접 물어봐요). A 는 이 서버의 IPv4 여야 하고, AAAA 는 없어야 해요
+  local ip a aaaa a_ok=false aaaa_ok=false
   ip=$(server_ip 4) || { warn "서버 IP 를 확인하지 못했어요"; return 1; }
-  ip6=$(server_ip 6) || ip6=""   # IPv6 가 없는 서버는 빈 값이에요
   a=$(getent ahostsv4 "$JOB_ARG" 2>/dev/null | awk '{ print $1 }' | grep -E "$IP_CHARS_RE" | sort -u || true)
   aaaa=$(getent ahostsv6 "$JOB_ARG" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ { print $1 }' | grep -E "$IP_CHARS_RE" | sort -u || true)
   grep -qxF "$ip" <<< "$a" && a_ok=true
-  if [ -z "$aaaa" ]; then aaaa_ok=true
-  elif [ -n "$ip6" ] && [ -z "$(grep -vxF "$ip6" <<< "$aaaa" || true)" ]; then aaaa_ok=true; fi
+  # AAAA 는 이 서버 주소여도 지워야 해요: IPv6 손님이 모두 도커 게이트웨이 주소로 보여 로그인 제한을 함께 받아요
+  [ -n "$aaaa" ] || aaaa_ok=true
   printf '{"domain":"%s","server_ip":"%s","a":[%s],"aaaa":[%s],"match":%s,"aaaa_ok":%s}\n' \
     "$JOB_ARG" "$ip" "$(json_list <<< "$a")" "$(json_list <<< "$aaaa")" \
     "$([ "$a_ok" = true ] && [ "$aaaa_ok" = true ] && echo true || echo false)" "$aaaa_ok" | out_publish "$JOB_TOKEN"
@@ -508,12 +509,13 @@ ssh_alert() { # ssh_alert 차단 수 : 차단 중인 주소가 전보다 늘었�
   else warn "SSH 차단 알림을 보내지 못했어요"; fi
 }
 
-host_refresh() { # 호스트 정보 파일(host.json): 확인 시각, 채널, 버전, 필요한 관리 명령 판, 다음 자동 업데이트, SSH 실패 로그인 수
-  local failed banned
+host_refresh() { # 호스트 정보 파일(host.json): 확인 시각, 채널, 버전, 태그 고정 여부, 필요한 관리 명령 판, 다음 자동 업데이트, SSH 실패 로그인 수
+  local failed banned pinned=true
   read -r failed banned <<< "$(ssh_counts)"
   ssh_alert "$banned"
-  write_file "$HOST_DIR/host.json" "$(printf '{"checked":"%s","channel":"%s","version":"%s","min_cli":%s,"next_update":%s,"ssh_failed":%s,"ssh_banned":%s}' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(word_or_unknown "$(env_val CHANNEL)")" "$(word_or_unknown "$(env_val VERSION)")" \
+  case "$(env_val VERSION)" in stable|beta|'') pinned=false ;; esac # 고정: 'dahae update 태그' 뒤로 채널 대신 그 태그예요 (자동 업데이트가 채널로 되돌려요)
+  write_file "$HOST_DIR/host.json" "$(printf '{"checked":"%s","channel":"%s","version":"%s","pinned":%s,"min_cli":%s,"next_update":%s,"ssh_failed":%s,"ssh_banned":%s}' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(word_or_unknown "$(env_val CHANNEL)")" "$(word_or_unknown "$(env_val VERSION)")" "$pinned" \
     "$MIN_CLI_REV" "$(next_update)" "$failed" "$banned")"
 }
 
@@ -580,7 +582,8 @@ dir_ok() { # dir_ok 폴더 : 심볼릭 링크가 아니고, 관리자 소유이�
 dirs_ok() { dir_ok "$HOST_DIR" && dir_ok "$JOBS/status" && dir_ok "$JOBS/work" && dir_ok "$JOBS/work/done" && dir_ok "$JOBS/public" && dir_ok "$JOBS/out"; }
 
 sweep_work() { # 예전 실행이 중간에 끝나서 남긴 작업 파일과 사본을 치워요 (잠금 안에서만 불러요)
-  rm -f -- "$JOBS"/work/*.job "$JOBS"/work/copy.* 2>/dev/null || true
+  rm -rf -- "$JOBS"/work/*.job "$JOBS"/work/*.approve 2>/dev/null || true  # 폴더로 남은 것도 지워요 (링크는 따라가지 않아요)
+  rm -f -- "$JOBS"/work/copy.* 2>/dev/null || true
 }
 
 recover_interrupted() { # 실행 중에 꺼져서 running 으로 남은 작업은 중단으로 바꿔요 (잠금을 잡은 지금 실행 중인 작업은 없어요)
@@ -622,7 +625,7 @@ intake_one() { # intake_one 경로 : 작업 파일 하나를 규칙대로 받아
   printf '%s' "$name" | grep -Eq '^[0-9a-f-]{36}\.job$' || return 1
   id=${name%.job}
   dst="$JOBS/work/$name"
-  mv -- "$src" "$dst" || return 1                       # 같은 파일 시스템 안의 이동이라 원자적이에요
+  mv -T -- "$src" "$dst" || return 1                    # 같은 파일 시스템 안의 이동이라 원자적이에요. -T: 남은 폴더 안으로 들어가지 않아요
   copy=$(mktemp "$JOBS/work/copy.XXXXXX") || return 1
   if job_copy "$dst" "$copy" && intake_check "$copy" "$id"; then
     rm -f -- "$dst"
@@ -630,7 +633,7 @@ intake_one() { # intake_one 경로 : 작업 파일 하나를 규칙대로 받아
     if is_high_kind "$JOB_KIND"; then hold_for_approval "$copy"; return; fi
     rm -f -- "$copy"; run_job
   else
-    rm -f -- "$copy" "$dst"
+    rm -f -- "$copy"; rm -rf -- "$dst"                  # API 가 만든 폴더여도 지워요
     reject_job "$id"
   fi
 }
